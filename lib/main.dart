@@ -5,6 +5,7 @@ import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:pluto_menu_bar/pluto_menu_bar.dart';
 
 void main() {
@@ -136,12 +137,20 @@ class _MyHomePageState extends State<MyHomePage> {
                     // icon: Icons.import_export,
                     onTap: () async {
                       final path = await FilePicker.platform.saveFile(
-                        allowedExtensions: ['txt', 'csv', 'xlsx', 'xlsm'],
+                        dialogTitle: "Sauver les résultats comem table Excel",
+                        allowedExtensions: ['xls'],
                       );
                       if (path != null) {
                         saveResults(path);
                       }
-                    })
+                    }),
+                PlutoMenuItemDivider(color: Colors.white),
+                PlutoMenuItem(
+                    title: 'Quitter',
+                    // icon: Icons.import_export,
+                    onTap: () {
+                      SystemChannels.platform.invokeMethod('SystemNavigator.pop');
+                    }),
               ]),
             ]),
         Expanded(
@@ -163,15 +172,17 @@ class _MyHomePageState extends State<MyHomePage> {
                     source: CsvTable(csvData!),
                   ),
           )
-        ]))
+        ])),
+        Center(
+            child: Padding(
+                padding: EdgeInsets.all(20),
+                child: ElevatedButton(
+                  onPressed: () {
+                    filterRowsSync();
+                  },
+                  child: const Text("filtrer"),
+                ))), // This trailing comma makes auto-formatting nicer for build methods.
       ]),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          filterRowsSync();
-        },
-        tooltip: 'Increment',
-        child: const Text("filtrer"),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 
@@ -259,12 +270,37 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   saveResults(String fileName) async {
-    final saveFile = File(fileName);
-    // final sink = saveFile.openWrite();
-    // sink.write(ListToCsvConverter().convert(csvData));
-    // await sink.flush();
-    // await sink.close();
-    saveFile.writeAsString(const ListToCsvConverter().convert(csvData));
+    print("Saving to file $fileName");
+    final components = fileName.split('.');
+    if (components.length > 1) {
+      if (components.last != 'xls') {
+        fileName = '$fileName.xls';
+      }
+    } else {
+      fileName = '$fileName.xls';
+    }
+    final excel = Excel.createExcel();
+    // final tableName = excel.getDefaultSheet();
+    final sheet = excel.sheets[excel.getDefaultSheet()];
+    if (sheet == null) {
+      message(context, "Impossible de créer le tableau");
+      return;
+    } else {
+      csvData!.forEach((row) => sheet.appendRow(row));
+      final contents = excel.save(fileName: fileName);
+      if (contents == null) {
+        message(context, "Impossible de sauver le tableau");
+        return;
+      }
+      try {
+        final saveFile = File(fileName);
+        await saveFile.writeAsBytes(contents);
+        print("Saved as $fileName");
+      } catch (e) {
+        message(context, e.toString());
+      }
+    }
+    // saveFile.writeAsString(const ListToCsvConverter().convert(csvData));
   }
 }
 
