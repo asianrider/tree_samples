@@ -138,7 +138,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     onTap: () async {
                       final path = await FilePicker.platform.saveFile(
                         dialogTitle: "Sauver les résultats comem table Excel",
-                        allowedExtensions: ['xls'],
+                        allowedExtensions: ['xlsx'],
                       );
                       if (path != null) {
                         saveResults(path);
@@ -273,11 +273,11 @@ class _MyHomePageState extends State<MyHomePage> {
     print("Saving to file $fileName");
     final components = fileName.split('.');
     if (components.length > 1) {
-      if (components.last != 'xls') {
-        fileName = '$fileName.xls';
+      if (components.last != 'xlsx') {
+        fileName = '$fileName.xlsx';
       }
     } else {
-      fileName = '$fileName.xls';
+      fileName = '$fileName.xlsx';
     }
     final excel = Excel.createExcel();
     // final tableName = excel.getDefaultSheet();
