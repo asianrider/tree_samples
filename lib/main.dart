@@ -14,7 +14,7 @@ import 'package:window_size/window_size.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    setWindowTitle('Flutter Demo');
+    setWindowTitle('Tree Samples');
     setWindowMinSize(const Size(400, 300));
     setWindowMaxSize(Size.infinite);
   }
@@ -28,7 +28,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Tree Samples',
       theme: ThemeData(
         // This is the theme of your application.
         //
