@@ -109,13 +109,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    print("OK build");
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       // appBar: AppBar(
       //   title: Text(widget.title),
@@ -170,22 +163,23 @@ class _MyHomePageState extends State<MyHomePage> {
         Expanded(
             child: Stack(children: [
           if (isLoading) const Center(child: CircularProgressIndicator()),
-          SingleChildScrollView(
-            child: csvData == null
-                ? const Center(child: Text('Chargez des données avec "Fichier->ouvrir"'))
-                : PaginatedDataTable(
-                    columns: csvData![0]
-                        .map(
-                          (item) => DataColumn(
-                            label: Text(
-                              item.toString(),
+          if (!isLoading)
+            SingleChildScrollView(
+              child: csvData == null
+                  ? const Center(child: Text('Chargez des données avec "Fichier->ouvrir"'))
+                  : PaginatedDataTable(
+                      columns: csvData![0]
+                          .map(
+                            (item) => DataColumn(
+                              label: Text(
+                                item.toString(),
+                              ),
                             ),
-                          ),
-                        )
-                        .toList(),
-                    source: CsvTable(csvData!),
-                  ),
-          )
+                          )
+                          .toList(),
+                      source: CsvTable(csvData!),
+                    ),
+            )
         ])),
         Center(
             child: Padding(
@@ -227,25 +221,16 @@ class _MyHomePageState extends State<MyHomePage> {
     } else if (file.extension == 'xlsx' || file.extension == 'xlsm') {
       setState(() => isLoading = true);
       try {
-        final contents = await File(file.path!).readAsBytes();
-        final excel = Excel.decodeBytes(contents);
-        final tables = excel.tables.values;
-        if (tables.length == 0) {
-          message(context, "Fichier vide");
-          return;
-        }
-        final table = tables.first;
-        final result = table.rows
-            .map((row) => row.map((e) {
-                  final val = e?.value;
-                  if (val is int || val is double) return val;
-                  return val.toString();
-                }).toList())
-            .toList();
+        final startDate = DateTime.now();
+        final result = await compute<String, List<List<dynamic>>?>(doLoad, file.path!);
+        print("Result is ${result?.length} lines long");
         setState(() {
           csvData = result;
           setState(() => isLoading = false);
         });
+
+        final endDate = DateTime.now();
+        print("Done loading in ${endDate.difference(startDate).inSeconds} seconds");
       } catch (e) {
         message(context, e.toString());
         setState(() => isLoading = false);
@@ -333,7 +318,7 @@ dynamic doFilterRows(List<List<dynamic>> csvData) {
     final firstRow = csvData[0];
     int targetColumn = -1, dateL = -1, dateR = -1;
     try {
-      var hit = firstRow.firstWhere((val) => val.toString() == '%CC' || val.toString() == 'Glk');
+      var hit = firstRow.firstWhere((val) => val.toString() == 'CDI');
       targetColumn = firstRow.indexOf(hit);
       hit = firstRow.firstWhere((val) => val.toString() == 'DateL');
       dateL = firstRow.indexOf(hit);
@@ -366,12 +351,14 @@ dynamic doFilterRows(List<List<dynamic>> csvData) {
     print("Found ${treeGroups.keys.length} trees");
     treeGroups.forEach((key, rowList) {
       try {
-        print("2nd row target column is ${rowList[1][targetColumn]}");
-        print("Rowlist is ${rowList.length} long");
+        // print("2nd row target column is ${rowList[1][targetColumn]}");
+        // print("Rowlist is ${rowList.length} long");
         List? ownLine;
         rowList.forEach((row) {
           if (row[targetColumn] != null) {
-            if (row[targetColumn] == 100 || row[targetColumn].toString() == '100') ownLine = row;
+            if (row[targetColumn] == 1000 || row[targetColumn].toString() == '1000') {
+              ownLine = ownLine ?? row;
+            }
           }
         });
         if (ownLine == null) {
@@ -381,8 +368,9 @@ dynamic doFilterRows(List<List<dynamic>> csvData) {
           //     .firstWhere((row) => row[targetColumn] != null && (row[targetColumn] == 100 || row[targetColumn] == "100"));
           final start = ownLine![dateL];
           final end = ownLine![dateR];
-          print("Start = $start, end = $end");
-          print("Tree: $key: start=$start, end=$end, has ${rowList.length} entries");
+          // print("Row: $ownLine");
+          // print("Start = $start, end = $end");
+          // print("Tree: $key: start=$start, end=$end, has ${rowList.length} entries");
           rowList.forEach((row) {
             if (row[dateL] == start && row[dateR] == end) {
               result.add(row);
@@ -399,4 +387,23 @@ dynamic doFilterRows(List<List<dynamic>> csvData) {
   } catch (e) {
     return e.toString();
   }
+}
+
+List<List<dynamic>>? doLoad(String fileName) {
+  final contents = File(fileName).readAsBytesSync();
+  final excel = Excel.decodeBytes(contents);
+  final tables = excel.tables.values;
+  if (tables.isEmpty) {
+    // message(context, "Fichier vide");
+    return null;
+  }
+  final table = tables.first;
+  final result = table.rows
+      .map((row) => row.map((e) {
+            final val = e?.value;
+            if (val is int || val is double) return val;
+            return val.toString();
+          }).toList())
+      .toList();
+  return result;
 }
