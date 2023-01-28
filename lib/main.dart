@@ -1,14 +1,23 @@
 import 'dart:io';
-
+import 'package:intl/intl.dart';
 import 'package:csv/csv.dart';
+import 'package:csv/csv_settings_autodetection.dart';
 import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pluto_menu_bar/pluto_menu_bar.dart';
+import 'dart:collection';
+import 'package:window_size/window_size.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    setWindowTitle('Flutter Demo');
+    setWindowMinSize(const Size(400, 300));
+    setWindowMaxSize(Size.infinite);
+  }
   runApp(const MyApp());
 }
 
@@ -63,14 +72,19 @@ class CsvTable extends DataTableSource {
   @override
   DataRow? getRow(int index) {
     int i = firstLineIsHeader ? index + 1 : index;
-    return DataRow(cells: csvData[i].map((cell) => DataCell(Text(cell.toString()))).toList());
+    return DataRow(
+        cells: csvData[i]
+            .map((cell) => DataCell(Text(
+                  cell.toString(),
+                )))
+            .toList());
   }
 
   @override
   bool get isRowCountApproximate => false;
 
   @override
-  int get rowCount => csvData.length;
+  int get rowCount => firstLineIsHeader ? csvData.length - 1 : csvData.length;
 
   @override
   int get selectedRowCount => 0;
@@ -199,7 +213,16 @@ class _MyHomePageState extends State<MyHomePage> {
     if (file.extension == 'txt' || file.extension == 'csv') {
       setState(() => isLoading = true);
       final contents = await File(file.path!).readAsString();
-      csvData = const CsvToListConverter().convert(contents, fieldDelimiter: ' ', eol: "\n", shouldParseNumbers: true);
+      csvData = const CsvToListConverter().convert(contents, fieldDelimiter: ' ', eol: "\n", shouldParseNumbers: false);
+      csvData = csvData!
+          .map((row) => row.map((cell) {
+                try {
+                  return NumberFormat().parse(cell);
+                } catch (e) {
+                  return cell;
+                }
+              }).toList())
+          .toList();
       setState(() => isLoading = false);
     } else if (file.extension == 'xlsx' || file.extension == 'xlsm') {
       setState(() => isLoading = true);
@@ -214,8 +237,9 @@ class _MyHomePageState extends State<MyHomePage> {
         final table = tables.first;
         final result = table.rows
             .map((row) => row.map((e) {
-                  final text = e?.value.toString();
-                  return text;
+                  final val = e?.value;
+                  if (val is int || val is double) return val;
+                  return val.toString();
                 }).toList())
             .toList();
         setState(() {
@@ -306,29 +330,35 @@ class _MyHomePageState extends State<MyHomePage> {
 
 dynamic doFilterRows(List<List<dynamic>> csvData) {
   try {
-    final firstRow = csvData![0];
-    int targetColumn = firstRow.indexOf('%CC');
-    if (targetColumn == -1) targetColumn = firstRow.indexOf('Glk');
-    final dateL = firstRow.indexOf('DateL');
-    final dateR = firstRow.indexOf('DateR');
-    if (targetColumn == -1) {
-      // message(context, "Can't find %CC or Glk column");
-      return "Pas trouvé de colonne %CC ou Glk";
-    }
-    if (dateL == -1) {
-      // message(context, "Can't find DateL");
-      return "Pas trouvé de colonne DateL";
-    }
-    if (dateR == -1) {
-      // message(context, "Can't find DateR");
-      return "Pas trouvé de colonne DateR";
+    final firstRow = csvData[0];
+    int targetColumn = -1, dateL = -1, dateR = -1;
+    try {
+      var hit = firstRow.firstWhere((val) => val.toString() == '%CC' || val.toString() == 'Glk');
+      targetColumn = firstRow.indexOf(hit);
+      hit = firstRow.firstWhere((val) => val.toString() == 'DateL');
+      dateL = firstRow.indexOf(hit);
+      hit = firstRow.firstWhere((val) => val.toString() == 'DateR');
+      dateR = firstRow.indexOf(hit);
+    } catch (e) {
+      if (targetColumn == -1) {
+        // message(context, "Can't find DateL");
+        return "Pas trouvé de colonne %CC or Glk";
+      }
+      if (dateL == -1) {
+        // message(context, "Can't find DateL");
+        return "Pas trouvé de colonne DateL";
+      }
+      if (dateR == -1) {
+        // message(context, "Can't find DateR");
+        return "Pas trouvé de colonne DateR";
+      }
     }
     print("Target CC is $targetColumn, year columns are $dateL, $dateR");
     Map<String, List<List<dynamic>>> treeGroups = {};
     List<List<dynamic>> result = [];
     csvData.sublist(1).forEach((row) {
       if (row.length > 0 && row[0] != null) {
-        final treeName = row[0] as String;
+        final treeName = row[0].toString();
         if (treeGroups[treeName] == null) treeGroups[treeName] = [];
         treeGroups[treeName]!.add(row);
       }
@@ -336,15 +366,29 @@ dynamic doFilterRows(List<List<dynamic>> csvData) {
     print("Found ${treeGroups.keys.length} trees");
     treeGroups.forEach((key, rowList) {
       try {
-        final ownLine = rowList.firstWhere((row) => row[targetColumn] == 100 || row[targetColumn] == "100");
-        final start = ownLine[dateL];
-        final end = ownLine[dateR];
-        print("Tree: $key: start=$start, end=$end, has ${rowList.length} entries");
+        print("2nd row target column is ${rowList[1][targetColumn]}");
+        print("Rowlist is ${rowList.length} long");
+        List? ownLine;
         rowList.forEach((row) {
-          if (row[dateL] == start && row[dateR] == end) {
-            result.add(row);
+          if (row[targetColumn] != null) {
+            if (row[targetColumn] == 100 || row[targetColumn].toString() == '100') ownLine = row;
           }
         });
+        if (ownLine == null) {
+          print("Error: null");
+        } else {
+          // final ownLine = rowList
+          //     .firstWhere((row) => row[targetColumn] != null && (row[targetColumn] == 100 || row[targetColumn] == "100"));
+          final start = ownLine![dateL];
+          final end = ownLine![dateR];
+          print("Start = $start, end = $end");
+          print("Tree: $key: start=$start, end=$end, has ${rowList.length} entries");
+          rowList.forEach((row) {
+            if (row[dateL] == start && row[dateR] == end) {
+              result.add(row);
+            }
+          });
+        }
       } catch (e) {
         // message(context, "Can't find 100 in column $targetColumn of tree: $key");
         return;
